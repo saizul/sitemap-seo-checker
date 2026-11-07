@@ -17,7 +17,7 @@ from .models import ERROR, PageResult, issue_level
 from .postprocess import finalize
 from .report import render_summary, to_html, to_json, write_csv
 from .robots import load_robots
-from .sitemap import SitemapError, collect_urls
+from .sitemap import SitemapError, collect_urls, compile_patterns
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -32,6 +32,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--delay", type=float, default=0.0, help="seconds each worker waits before a request"
     )
     p.add_argument("--max-urls", type=int, default=None, help="stop after this many URLs")
+    p.add_argument(
+        "--include", action="append", default=[], metavar="REGEX",
+        help="only audit URLs matching this regex (repeatable; any match passes)",
+    )  # fmt: skip
+    p.add_argument(
+        "--exclude", action="append", default=[], metavar="REGEX",
+        help="skip URLs matching this regex (repeatable; applied after --include)",
+    )  # fmt: skip
     p.add_argument("--timeout", type=float, default=15.0, help="request timeout in seconds")
     p.add_argument("--retries", type=int, default=1, help="retries on timeouts/429/5xx (default 1)")
     p.add_argument("--user-agent", default=DEFAULT_USER_AGENT, help="User-Agent header")
@@ -68,18 +76,31 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.resume and not args.cache:
         print("error: --resume needs --cache", file=sys.stderr)
         return 2
+    try:
+        include = compile_patterns(args.include)
+        exclude = compile_patterns(args.exclude)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     fetcher = Fetcher(
         user_agent=args.user_agent, timeout=args.timeout, delay=args.delay, retries=args.retries
     )
     try:
-        collection = collect_urls(fetcher.get_bytes, args.sitemap_url, args.max_urls)
+        collection = collect_urls(
+            fetcher.get_bytes, args.sitemap_url, args.max_urls, include=include, exclude=exclude
+        )
     except SitemapError as exc:
         print(f"error: cannot read sitemap: {exc}", file=sys.stderr)
         return 2
     for message in collection.errors:
         err.print(f"[yellow]warning:[/yellow] {message}")
+    if collection.filtered:
+        err.print(f"[dim]note: {collection.filtered} URL(s) skipped by --include/--exclude[/dim]")
     if not collection.urls:
-        print("error: the sitemap contains no URLs", file=sys.stderr)
+        if collection.filtered:
+            print("error: --include/--exclude removed every URL in the sitemap", file=sys.stderr)
+        else:
+            print("error: the sitemap contains no URLs", file=sys.stderr)
         return 2
 
     robots, robots_url = (None, "")
