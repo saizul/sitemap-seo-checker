@@ -1,0 +1,13 @@
+# sample
+User-agent: *
+Disallow: /private/
+Disallow: /*.pdf$
+Allow: /private/public-note
+Disallow: /search?
+
+User-agent: Googlebot
+User-agent: Bingbot
+Disallow: /nogoogle/
+Allow: /
+
+Sitemap: https://example.com/sitemap.xml
