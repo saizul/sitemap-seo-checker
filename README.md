@@ -1,5 +1,7 @@
 # sitemap-seo-checker
 
+[![CI](https://github.com/saizul/sitemap-seo-checker/actions/workflows/ci.yml/badge.svg)](https://github.com/saizul/sitemap-seo-checker/actions/workflows/ci.yml) ![Python](https://img.shields.io/badge/Python-ready-blue?logo=python&logoColor=white) ![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)
+
 Read an XML sitemap (plain, index or gzip), fetch every URL concurrently and get
 a CSV, JSON or HTML audit of what search engines will see: status codes,
 redirects, canonicals, noindex, titles, descriptions, headings, hreflang,
