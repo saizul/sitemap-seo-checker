@@ -39,6 +39,7 @@ Requires Python 3.9+.
 ```bash
 sitemap-check https://example.com/sitemap.xml
 sitemap-check https://example.com/sitemap_index.xml --workers 8 --delay 0.2 --max-urls 500
+sitemap-check https://example.com/sitemap.xml --include '/blog/' --exclude '\?(page|utm_)'
 sitemap-check https://example.com/sitemap.xml --json > audit.json
 sitemap-check https://example.com/sitemap.xml -o audit.csv --html audit.html
 sitemap-check https://example.com/sitemap.xml --cache crawl.db            # saves progress
@@ -49,7 +50,9 @@ sitemap-check https://example.com/sitemap.xml --cache crawl.db --resume   # cont
 | --- | --- |
 | `--workers N` | concurrent requests (default 5) |
 | `--delay S` | seconds each worker waits before a request (default 0) |
-| `--max-urls N` | stop collecting after N URLs |
+| `--max-urls N` | stop collecting after N URLs (applied after the filters below) |
+| `--include REGEX` | only audit URLs matching the regex; repeat the flag to allow several patterns |
+| `--exclude REGEX` | skip URLs matching the regex; repeatable, wins over `--include` |
 | `--timeout S`, `--retries N` | request timeout and retries on timeout/429/5xx |
 | `--user-agent TEXT` | User-Agent header (default `sitemap-seo-checker`) |
 | `-o, --output CSV` | CSV path (default `sitemap-report.csv`) |

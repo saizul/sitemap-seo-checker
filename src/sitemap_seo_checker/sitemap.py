@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import re
 import xml.etree.ElementTree as ET
 import zlib
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Set, Tuple
+from typing import Callable, Iterable, List, Optional, Pattern, Sequence, Set, Tuple
 
 MAX_DEPTH = 5
 MAX_UNCOMPRESSED = 200 * 1024 * 1024
@@ -23,6 +24,7 @@ class SitemapCollection:
     sitemaps: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     truncated: bool = False
+    filtered: int = 0  # URLs dropped by --include / --exclude
 
 
 def _local(tag: str) -> str:
@@ -69,13 +71,39 @@ def parse_sitemap(content: bytes) -> Tuple[str, List[str]]:
     return ("index" if kind == "sitemapindex" else "urlset"), locs
 
 
+def compile_patterns(patterns: Iterable[str]) -> List[Pattern[str]]:
+    """Compile regular expressions, raising ``ValueError`` that names the bad one."""
+    compiled = []
+    for pattern in patterns:
+        try:
+            compiled.append(re.compile(pattern))
+        except re.error as exc:
+            raise ValueError(f"invalid regular expression {pattern!r}: {exc}") from exc
+    return compiled
+
+
+def url_allowed(
+    url: str, include: Sequence[Pattern[str]] = (), exclude: Sequence[Pattern[str]] = ()
+) -> bool:
+    """A URL passes if it matches any ``include`` (when given) and no ``exclude`` pattern.
+
+    Patterns are searched anywhere in the URL (``re.search``); anchor them for exact matches.
+    """
+    if include and not any(p.search(url) for p in include):
+        return False
+    return not any(p.search(url) for p in exclude)
+
+
 def collect_urls(
     fetch_bytes: Callable[[str], bytes],
     sitemap_url: str,
     max_urls: Optional[int] = None,
+    include: Sequence[Pattern[str]] = (),
+    exclude: Sequence[Pattern[str]] = (),
 ) -> SitemapCollection:
     """Walk a sitemap (or index) and return de-duplicated page URLs in order.
 
+    ``include`` / ``exclude`` filter page URLs before ``max_urls`` is applied.
     A failing child sitemap is recorded in ``errors``; a failing root raises
     :class:`SitemapError`.
     """
@@ -109,6 +137,10 @@ def collect_urls(
             return True
         for loc in locs:
             if loc in seen_urls:
+                continue
+            if not url_allowed(loc, include, exclude):
+                seen_urls.add(loc)
+                out.filtered += 1
                 continue
             if max_urls is not None and len(out.urls) >= max_urls:
                 out.truncated = True
