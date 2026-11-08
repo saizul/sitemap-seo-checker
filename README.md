@@ -63,6 +63,8 @@ sitemap-check https://example.com/sitemap.xml --cache crawl.db --resume   # cont
 | `--no-progress` | hide the progress bar |
 | `--fail-on-errors` | exit 1 if any error-level issue exists |
 
+Numeric options are validated up front: `--workers` and `--max-urls` must be at least 1, `--timeout` must be greater than 0, and `--delay` / `--retries` must not be negative.
+
 Exit codes: `0` ok, `1` errors found with `--fail-on-errors`, `2` failure
 (unreadable sitemap, bad options, unwritable output), `130` interrupted.
 
