@@ -66,12 +66,28 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def validate_args(args: argparse.Namespace) -> Optional[str]:
+    """Return an error message for out-of-range numeric options, or None if all are valid."""
+    if args.workers < 1:
+        return "--workers must be at least 1"
+    if not args.timeout > 0:  # also rejects NaN
+        return "--timeout must be greater than 0"
+    if not args.delay >= 0:
+        return "--delay must not be negative"
+    if args.retries < 0:
+        return "--retries must not be negative"
+    if args.max_urls is not None and args.max_urls < 1:
+        return "--max-urls must be at least 1"
+    return None
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     """Entry point. Exit codes: 0 ok, 1 errors (--fail-on-errors), 2 failure, 130 interrupted."""
     args = build_parser().parse_args(argv)
     err = Console(stderr=True)
-    if args.workers < 1:
-        print("error: --workers must be at least 1", file=sys.stderr)
+    problem = validate_args(args)
+    if problem:
+        print(f"error: {problem}", file=sys.stderr)
         return 2
     if args.resume and not args.cache:
         print("error: --resume needs --cache", file=sys.stderr)

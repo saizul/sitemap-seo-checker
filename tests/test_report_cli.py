@@ -4,6 +4,7 @@ import io
 import json
 from io import StringIO
 
+import pytest
 import responses
 from conftest import add_page, fixture_bytes, fixture_text
 from rich.console import Console
@@ -248,3 +249,19 @@ def test_cli_user_agent_sent(mock, tmp_path):
 def test_cli_delay_option_accepted(mock, tmp_path):
     site(mock)
     assert run(["--delay", "0", "--workers", "2"], tmp_path) == 0
+
+
+@pytest.mark.parametrize(
+    "flags, message",
+    [
+        (["--timeout", "0"], "--timeout must be greater than 0"),
+        (["--timeout", "-3"], "--timeout must be greater than 0"),
+        (["--timeout", "nan"], "--timeout must be greater than 0"),
+        (["--delay", "-1"], "--delay must not be negative"),
+        (["--retries", "-1"], "--retries must not be negative"),
+        (["--max-urls", "0"], "--max-urls must be at least 1"),
+    ],
+)
+def test_cli_rejects_out_of_range_options(flags, message, capsys):
+    assert main([SITEMAP, *flags]) == 2
+    assert message in capsys.readouterr().err
