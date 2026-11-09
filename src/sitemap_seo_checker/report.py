@@ -18,7 +18,7 @@ from .models import ERROR, ISSUES, NOTICE, WARNING, Analysis, PageResult, issue_
 CSV_COLUMNS = [
     "url", "status", "final_status", "redirects", "final_url", "canonical", "canonical_state",
     "meta_robots", "x_robots_tag", "noindex", "title", "title_length", "meta_description_length",
-    "h1_count", "response_time_ms", "hreflang_count", "inbound_links", "issues", "error",
+    "h1_count", "word_count", "response_time_ms", "hreflang_count", "inbound_links", "issues", "error",
 ]  # fmt: skip
 
 
@@ -39,6 +39,7 @@ def row_for(page: PageResult) -> Dict[str, Any]:
         "title_length": page.title_length,
         "meta_description_length": page.meta_description_length,
         "h1_count": page.h1_count,
+        "word_count": page.word_count if page.word_count >= 0 else "",
         "response_time_ms": page.response_time_ms if page.response_time_ms is not None else "",
         "hreflang_count": len(page.hreflang),
         "inbound_links": page.inbound_links if page.inbound_links is not None else "",

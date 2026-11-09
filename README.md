@@ -59,6 +59,7 @@ sitemap-check https://example.com/sitemap.xml --cache crawl.db --resume   # cont
 | `--json` | print JSON to stdout instead of the summary |
 | `--html PATH` | also write an HTML report |
 | `--cache DB`, `--resume` | SQLite cache and resume |
+| `--soft-404-min-words N` | also flag 200 pages with fewer than N visible words as `soft-404` (default 0 = off) |
 | `--no-robots`, `--robots-agent` | skip robots.txt, or choose the agent (default `Googlebot`) |
 | `--no-progress` | hide the progress bar |
 | `--fail-on-errors` | exit 1 if any error-level issue exists |
@@ -121,6 +122,7 @@ CSV written to sitemap-report.csv
 | `noindex` | error | noindex in meta robots or `X-Robots-Tag` |
 | `blocked-by-robots` | error | disallowed by robots.txt |
 | `canonical-other` | error | canonical points to a different URL |
+| `soft-404` | warning | 200 page that says "not found" in its title, H1 or short body (or has too little text with `--soft-404-min-words`) |
 | `redirect` | warning | URL redirects |
 | `duplicate-title` | warning | title shared with another sitemap URL |
 | `missing-title`, `missing-h1` | warning | no title / no H1 |
@@ -142,6 +144,7 @@ CSV written to sitemap-report.csv
 - Orphan detection only knows links found on crawled sitemap pages. With
   `--max-urls`, or when navigation is injected by JavaScript, results can contain
   false positives. Pages are not rendered in a browser.
+- `soft-404` looks for wording such as "not found", "404" or "does not exist" in the `<title>` and first `<h1>`, and in the body only when the page has 250 words or fewer. The thin-content check is opt-in because JavaScript-rendered pages look empty without a browser. The reason is stored in the row's notes (JSON output). Cached results are not re-evaluated, so run without `--resume` after changing the threshold.
 - A missing or unreachable robots.txt is treated as "everything allowed".
 - `--resume` reuses stored results for the same sitemap URL and retries URLs that
   previously failed. Without `--resume` the stored run is replaced.

@@ -52,6 +52,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--resume", action="store_true", help="reuse results from --cache for this sitemap"
     )
+    p.add_argument(
+        "--soft-404-min-words", type=int, default=0, metavar="N",
+        help="also flag 200 pages with fewer than N visible words as soft-404 (default 0 = off)",
+    )  # fmt: skip
     p.add_argument("--no-robots", action="store_true", help="do not read robots.txt")
     p.add_argument(
         "--robots-agent",
@@ -78,6 +82,8 @@ def validate_args(args: argparse.Namespace) -> Optional[str]:
         return "--retries must not be negative"
     if args.max_urls is not None and args.max_urls < 1:
         return "--max-urls must be at least 1"
+    if args.soft_404_min_words < 0:
+        return "--soft-404-min-words must not be negative"
     return None
 
 
@@ -139,6 +145,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             results = crawl(
                 collection.urls, fetcher, workers=args.workers, cache=cache,
                 run_key=args.sitemap_url, resume=args.resume, on_progress=on_progress,
+                soft_404_min_words=args.soft_404_min_words,
             )  # fmt: skip
     except KeyboardInterrupt:
         hint = f" Re-run with --cache {args.cache} --resume to continue." if cache else ""
