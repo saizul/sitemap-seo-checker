@@ -21,13 +21,15 @@ def crawl(
     run_key: str = "",
     resume: bool = False,
     on_progress: Optional[ProgressCallback] = None,
+    soft_404_min_words: int = 0,
 ) -> List[PageResult]:
     """Analyze every URL and return results in input order.
 
     With ``cache`` and ``resume`` previously completed URLs are reused (results
     that ended in a fetch error are retried). Without ``resume`` the stored run
     is cleared first. ``on_progress(done, total, result)`` is called from the
-    calling thread after every finished URL, cached ones included.
+    calling thread after every finished URL, cached ones included. A positive
+    ``soft_404_min_words`` flags 200 pages with less visible text as soft 404s.
     """
     done: Dict[str, PageResult] = {}
     if cache is not None:
@@ -45,7 +47,7 @@ def crawl(
     todo = [u for u in dict.fromkeys(urls) if u not in done]
     executor = ThreadPoolExecutor(max_workers=max(1, workers))
     try:
-        futures = {executor.submit(analyze, u, fetcher): u for u in todo}
+        futures = {executor.submit(analyze, u, fetcher, soft_404_min_words): u for u in todo}
         for future in as_completed(futures):
             page = future.result()
             done[page.url] = page

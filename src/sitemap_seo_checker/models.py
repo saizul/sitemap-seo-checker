@@ -16,6 +16,7 @@ ISSUES: Dict[str, Tuple[str, str]] = {
     "noindex": (ERROR, "noindex in meta robots or X-Robots-Tag"),
     "blocked-by-robots": (ERROR, "URL is disallowed by robots.txt"),
     "canonical-other": (ERROR, "Canonical points to a different URL"),
+    "soft-404": (WARNING, "200 page that looks like a 'not found' page"),
     "redirect": (WARNING, "URL redirects"),
     "duplicate-title": (WARNING, "Title shared with another sitemap URL"),
     "missing-title": (WARNING, "No <title>"),
@@ -62,6 +63,8 @@ class PageResult:
     title_length: int = 0
     meta_description_length: int = 0
     h1_count: int = 0
+    word_count: int = -1  # visible words in the HTML; -1 when the page was not parsed
+    soft_404_hint: str = ""  # "not found" wording found in the title, H1 or a short body
     response_time_ms: Optional[int] = None
     content_type: str = ""
     is_html: bool = False

@@ -260,8 +260,21 @@ def test_cli_delay_option_accepted(mock, tmp_path):
         (["--delay", "-1"], "--delay must not be negative"),
         (["--retries", "-1"], "--retries must not be negative"),
         (["--max-urls", "0"], "--max-urls must be at least 1"),
+        (["--soft-404-min-words", "-1"], "--soft-404-min-words must not be negative"),
     ],
 )
 def test_cli_rejects_out_of_range_options(flags, message, capsys):
     assert main([SITEMAP, *flags]) == 2
     assert message in capsys.readouterr().err
+
+
+def test_cli_soft_404_min_words_flag(mock, tmp_path):
+    site(mock)  # the fixture pages hold only a handful of words
+    assert run([], tmp_path) == 0
+    rows = list(csv.DictReader(open(tmp_path / "out.csv", newline="")))
+    assert all("soft-404" not in r["issues"] for r in rows)
+    assert all(r["word_count"] for r in rows)
+    assert run(["--soft-404-min-words", "50"], tmp_path) == 0
+    rows = list(csv.DictReader(open(tmp_path / "out.csv", newline="")))
+    flagged = {r["url"] for r in rows if "soft-404" in r["issues"]}
+    assert flagged == {"https://example.com/", "https://example.com/post-1"}

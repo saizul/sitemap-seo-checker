@@ -16,6 +16,15 @@ DESCRIPTION_MAX = 160
 MAX_BODY_BYTES = 2 * 1024 * 1024
 MAX_LINKS = 5000
 _NOINDEX = re.compile(r"\b(noindex|none)\b", re.I)
+SHORT_BODY_WORDS = 250  # "not found" wording in the body only counts on pages this short
+_NOT_FOUND = re.compile(
+    r"\b404\s*(?:error|page|not\s+found)|\berror\s*404\b|\bnot\s+found\b"
+    r"|\b(?:can(?:no|['\u2019]?)t|could\s*n[o']?t)\s+be\s+found\b"
+    r"|\bdoes(?:\s+not|n['\u2019]t)\s+exist\b|\bno\s+longer\s+(?:available|exists?)\b"
+    r"|\bpage\s+you\s+(?:are|were)\s+looking\s+for\b"
+    r"|\u09aa\u09be\u0993\u09af\u09bc\u09be\s+\u09af\u09be\u09af\u09bc\u09a8\u09bf",  # Bangla
+    re.I,
+)
 _SKIP_SCHEMES = ("mailto:", "tel:", "javascript:", "data:", "sms:")
 
 
@@ -85,8 +94,41 @@ def apply_html(result: PageResult, html: Union[str, bytes]) -> None:
             break
     result.internal_links = links
 
+    for tag in soup(["script", "style", "noscript", "template"]):
+        tag.decompose()
+    body_text = _squash(soup.get_text(" "))
+    result.word_count = len(body_text.split())
+    result.soft_404_hint = _soft_404_hint(result, soup, body_text)
 
-def page_issues(result: PageResult) -> List[str]:
+
+def _soft_404_hint(result: PageResult, soup: BeautifulSoup, body_text: str) -> str:
+    """First "not found" wording in the title, an H1, or (on short pages) the body."""
+    heading = soup.find("h1")
+    candidates = [("title", result.title), ("h1", _squash(heading.get_text()) if heading else "")]
+    if result.word_count <= SHORT_BODY_WORDS:
+        candidates.append(("body", body_text))
+    for where, text in candidates:
+        match = _NOT_FOUND.search(text)
+        if match:
+            return f"{where} says '{match.group(0).lower()}'"
+    return ""
+
+
+def soft_404_reason(result: PageResult, min_words: int = 0) -> str:
+    """Why a 200 HTML page looks like a soft 404, or "" if it does not.
+
+    ``min_words`` > 0 also flags pages whose visible text is shorter than that.
+    """
+    if not result.is_html or result.final_status != 200 or result.noindex:
+        return ""
+    if result.soft_404_hint:
+        return result.soft_404_hint
+    if min_words > 0 and 0 <= result.word_count < min_words:
+        return f"only {result.word_count} words (minimum {min_words})"
+    return ""
+
+
+def page_issues(result: PageResult, soft_404_min_words: int = 0) -> List[str]:
     """Issues that can be decided from a single page."""
     issues: List[str] = []
     if result.error:
@@ -97,6 +139,8 @@ def page_issues(result: PageResult) -> List[str]:
         issues.append("redirect")
     if result.noindex:
         issues.append("noindex")
+    if soft_404_reason(result, soft_404_min_words):
+        issues.append("soft-404")
     if result.is_html and result.final_status == 200:
         if result.canonical_state == "other":
             issues.append("canonical-other")
@@ -117,7 +161,7 @@ def page_issues(result: PageResult) -> List[str]:
     return issues
 
 
-def analyze(url: str, fetcher: Fetcher) -> PageResult:
+def analyze(url: str, fetcher: Fetcher, soft_404_min_words: int = 0) -> PageResult:
     """Fetch ``url`` and describe it. Never raises."""
     result = PageResult(url=url)
     try:
@@ -148,7 +192,9 @@ def analyze(url: str, fetcher: Fetcher) -> PageResult:
         result.noindex = bool(
             _NOINDEX.search(result.meta_robots) or _NOINDEX.search(result.x_robots_tag)
         )
-        result.issues = page_issues(result)
+        result.issues = page_issues(result, soft_404_min_words)
+        if "soft-404" in result.issues:
+            result.add_issue("soft-404", soft_404_reason(result, soft_404_min_words))
     except Exception as exc:  # one bad page must never abort the crawl
         result.error = f"{exc.__class__.__name__}: {exc}"[:200]
         result.issues = ["fetch-error"]
