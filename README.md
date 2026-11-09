@@ -166,3 +166,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 ## License
 
 MIT, see [LICENSE](LICENSE). Author: Saizul Amin, https://saizul.com
+
+## Run with Docker
+
+A multi-arch image (amd64, arm64) is published to GitHub Container Registry on every change to `main`:
+
+```bash
+docker run --rm ghcr.io/saizul/sitemap-seo-checker:latest https://example.com
+# write reports to the current folder
+docker run --rm -v "$PWD:/work" ghcr.io/saizul/sitemap-seo-checker:latest --help
+```
