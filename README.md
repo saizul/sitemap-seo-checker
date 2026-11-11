@@ -22,6 +22,8 @@ robots.txt blocks and orphan pages.
 - Internal link extraction: finds **orphan** sitemap pages (no links from other
   sitemap pages) and pages that are linked but missing from the sitemap.
 - Resumable runs with a local SQLite cache (`--cache` / `--resume`).
+- Compare a run with a previous JSON report (`--compare`) to see new and fixed
+  issues, status changes and added / removed URLs, and fail CI on regressions only.
 - Progress bar on stderr, CSV (default), `--json` and `--html` outputs.
 
 ## Install
@@ -44,6 +46,7 @@ sitemap-check https://example.com/sitemap.xml --json > audit.json
 sitemap-check https://example.com/sitemap.xml -o audit.csv --html audit.html
 sitemap-check https://example.com/sitemap.xml --cache crawl.db            # saves progress
 sitemap-check https://example.com/sitemap.xml --cache crawl.db --resume   # continue later
+sitemap-check https://example.com/sitemap.xml --compare last-week.json     # what changed?
 ```
 
 | Option | Meaning |
@@ -62,11 +65,14 @@ sitemap-check https://example.com/sitemap.xml --cache crawl.db --resume   # cont
 | `--soft-404-min-words N` | also flag 200 pages with fewer than N visible words as `soft-404` (default 0 = off) |
 | `--no-robots`, `--robots-agent` | skip robots.txt, or choose the agent (default `Googlebot`) |
 | `--no-progress` | hide the progress bar |
+| `--compare JSON` | compare with a previous `--json` report: new / fixed issues, status changes, added / removed URLs |
+| `--fail-on-new-errors` | with `--compare`: exit 1 if an error-level issue appeared since the previous report |
 | `--fail-on-errors` | exit 1 if any error-level issue exists |
 
 Numeric options are validated up front: `--workers` and `--max-urls` must be at least 1, `--timeout` must be greater than 0, and `--delay` / `--retries` must not be negative.
 
-Exit codes: `0` ok, `1` errors found with `--fail-on-errors`, `2` failure
+Exit codes: `0` ok, `1` errors found with `--fail-on-errors` (or new errors with
+`--fail-on-new-errors`), `2` failure
 (unreadable sitemap, bad options, unwritable output), `130` interrupted.
 
 Be considerate: keep worker counts and delays sensible for the site you audit,
@@ -112,6 +118,60 @@ Illustrative output from mocked pages:
 └────────┴──────────────────────────────┴───────────────────────────────────────────────────────┘
 CSV written to sitemap-report.csv
 ```
+
+## Comparing with a previous run
+
+Keep the JSON report of an audit and pass it to the next one with `--compare`
+to see what changed instead of re-reading the whole report:
+
+```bash
+sitemap-check https://example.com/sitemap.xml --json > monday.json
+# ... a week later
+sitemap-check https://example.com/sitemap.xml --compare monday.json
+sitemap-check https://example.com/sitemap.xml --compare monday.json --json > today.json
+```
+
+```text
+        Changes since the previous report        
+┌───────────────────┬───────────────────────────┐
+│ Previous report   │ 2026-01-05T08:00:00+00:00 │
+│ URLs before / now │ 4 / 4                     │
+│ Added URLs        │ 1                         │
+│ Removed URLs      │ 1                         │
+│ URLs with changes │ 2                         │
+│ New issues        │ 2                         │
+│ New errors        │ 1                         │
+│ Fixed issues      │ 1                         │
+└───────────────────┴───────────────────────────┘
+           Issue changes            
+┏━━━━━━━━━┳━━━━━━━━━━┳━━━━━┳━━━━━━━┓
+┃ Level   ┃ Issue    ┃ New ┃ Fixed ┃
+┡━━━━━━━━━╇━━━━━━━━━━╇━━━━━╇━━━━━━━┩
+│ error   │ non-200  │ 1   │ 0     │
+│ warning │ orphan   │ 1   │ 0     │
+│ warning │ redirect │ 0   │ 1     │
+└─────────┴──────────┴─────┴───────┘
+                       Changed URLs (top 2 of 2)                        
+┏━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ Status     ┃ URL                         ┃ New issues ┃ Fixed issues ┃
+┡━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ 200 -> 404 │ https://example.com/pricing │ non-200    │ -            │
+│ 200        │ https://example.com/about   │ -          │ redirect     │
+└────────────┴─────────────────────────────┴────────────┴──────────────┘
+Added URLs: https://example.com/blog/launch
+Removed URLs: https://example.com/old-page
+```
+
+- The comparison is printed after the summary, added to the HTML report
+  (`--html`) and stored under `comparison` in the JSON output.
+- Issues on URLs that are new in this run count as new issues. A URL that left
+  the sitemap is listed as removed; its old issues are not counted as fixed.
+- `--fail-on-new-errors` exits with `1` only when an error-level issue appeared
+  since the previous report, so a scheduled job can alert on regressions while
+  known, accepted problems stay quiet. `--fail-on-errors` still works as before.
+- Compare runs made with the same `--include`, `--exclude` and `--max-urls`
+  options, otherwise URLs show up as added or removed. Do not redirect `--json`
+  output into the file you are comparing with: the shell empties it first.
 
 ## Issue codes
 

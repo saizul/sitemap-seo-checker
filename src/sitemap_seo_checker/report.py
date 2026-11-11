@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import __version__
+from .compare import Comparison, comparison_html
 from .models import ERROR, ISSUES, NOTICE, WARNING, Analysis, PageResult, issue_level
 
 CSV_COLUMNS = [
@@ -75,9 +76,12 @@ def summarize(results: List[PageResult]) -> Dict[str, Any]:
 
 
 def to_json(
-    results: List[PageResult], sitemap_url: str, analysis: Optional[Analysis] = None
+    results: List[PageResult],
+    sitemap_url: str,
+    analysis: Optional[Analysis] = None,
+    comparison: Optional[Comparison] = None,
 ) -> str:
-    """Full JSON report."""
+    """Full JSON report. ``comparison`` adds a ``comparison`` section (``--compare``)."""
     data = {
         "tool": "sitemap-seo-checker",
         "version": __version__,
@@ -87,6 +91,8 @@ def to_json(
         "analysis": analysis.to_dict() if analysis else {},
         "pages": [p.to_dict(full=False) for p in results],
     }
+    if comparison is not None:
+        data["comparison"] = comparison.to_dict()
     return json.dumps(data, indent=2)
 
 
@@ -143,7 +149,10 @@ def render_summary(
 
 
 def to_html(
-    results: List[PageResult], sitemap_url: str, analysis: Optional[Analysis] = None
+    results: List[PageResult],
+    sitemap_url: str,
+    analysis: Optional[Analysis] = None,
+    comparison: Optional[Comparison] = None,
 ) -> str:
     """Self-contained HTML report."""
     summary = summarize(results)
@@ -178,6 +187,7 @@ def to_html(
             f"<h2>Orphan sitemap pages ({len(analysis.orphans)})</h2><ul>{orphans}</ul>"
             f"<h2>Linked but not in the sitemap ({len(analysis.linked_not_in_sitemap)})</h2><ul>{extra_links}</ul>"
         )
+    changes = comparison_html(comparison) if comparison is not None else ""
     return (
         "<!doctype html><html lang='en'><head><meta charset='utf-8'><title>Sitemap audit</title><style>"
         "body{font-family:system-ui,sans-serif;margin:2rem auto;max-width:1100px;color:#111}"
@@ -187,6 +197,6 @@ def to_html(
         "</style></head><body>"
         f"<h1>Sitemap audit</h1><p>{escape(sitemap_url)}</p><div class='cards'>{cards}</div>"
         f"<h2>Issues</h2><table><tr><th>Code</th><th>Level</th><th>URLs</th><th>Meaning</th></tr>{issue_rows}</table>"
-        f"{extras}<h2>All URLs</h2><table><tr><th>Status</th><th>URL</th><th>Title</th><th>Canonical</th><th>Issues</th></tr>{page_rows}</table>"
+        f"{changes}{extras}<h2>All URLs</h2><table><tr><th>Status</th><th>URL</th><th>Title</th><th>Canonical</th><th>Issues</th></tr>{page_rows}</table>"
         "</body></html>"
     )
