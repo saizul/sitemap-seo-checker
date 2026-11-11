@@ -11,6 +11,7 @@ from rich.progress import BarColumn, Progress, TextColumn, TimeRemainingColumn
 
 from . import __version__
 from .cache import Cache
+from .compare import CompareError, compare, load_report, render_comparison
 from .crawler import crawl
 from .fetch import DEFAULT_USER_AGENT, Fetcher
 from .models import ERROR, PageResult, issue_level
@@ -66,6 +67,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--fail-on-errors", action="store_true", help="exit 1 if any error-level issue exists"
     )
+    p.add_argument(
+        "--compare", metavar="JSON",
+        help="previous --json report to compare with (shows new and fixed issues)",
+    )  # fmt: skip
+    p.add_argument(
+        "--fail-on-new-errors", action="store_true",
+        help="with --compare: exit 1 if an error-level issue appeared since the previous report",
+    )  # fmt: skip
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return p
 
@@ -88,7 +97,11 @@ def validate_args(args: argparse.Namespace) -> Optional[str]:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    """Entry point. Exit codes: 0 ok, 1 errors (--fail-on-errors), 2 failure, 130 interrupted."""
+    """Entry point.
+
+    Exit codes: 0 ok, 1 errors (--fail-on-errors / --fail-on-new-errors), 2 failure,
+    130 interrupted.
+    """
     args = build_parser().parse_args(argv)
     err = Console(stderr=True)
     problem = validate_args(args)
@@ -98,6 +111,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.resume and not args.cache:
         print("error: --resume needs --cache", file=sys.stderr)
         return 2
+    if args.fail_on_new_errors and not args.compare:
+        print("error: --fail-on-new-errors needs --compare", file=sys.stderr)
+        return 2
+    previous = None
+    if args.compare:
+        try:
+            previous = load_report(args.compare)
+        except CompareError as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
     try:
         include = compile_patterns(args.include)
         exclude = compile_patterns(args.exclude)
@@ -161,6 +184,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             f"[yellow]note:[/yellow] limited to {args.max_urls} URLs; orphan results may be partial"
         )
 
+    comparison = compare(previous, results) if previous is not None else None
+
     output = args.output or (None if args.json else "sitemap-report.csv")
     try:
         if output:
@@ -168,18 +193,23 @@ def main(argv: Optional[List[str]] = None) -> int:
                 write_csv(results, handle)
         if args.html:
             with open(args.html, "w", encoding="utf-8") as handle:
-                handle.write(to_html(results, args.sitemap_url, analysis))
+                handle.write(to_html(results, args.sitemap_url, analysis, comparison))
     except OSError as exc:
         print(f"error: cannot write report: {exc.strerror}", file=sys.stderr)
         return 2
 
     if args.json:
-        print(to_json(results, args.sitemap_url, analysis))
+        print(to_json(results, args.sitemap_url, analysis, comparison))
     else:
-        render_summary(results, Console(width=140), analysis)
+        console = Console(width=140)
+        render_summary(results, console, analysis)
+        if comparison is not None:
+            render_comparison(comparison, console)
         if output:
             print(f"CSV written to {output}")
     if args.fail_on_errors and any(issue_level(i) == ERROR for p in results for i in p.issues):
+        return 1
+    if args.fail_on_new_errors and comparison is not None and comparison.new_error_count:
         return 1
     return 0
 

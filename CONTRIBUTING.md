@@ -34,6 +34,7 @@ pytest
 | `cache.py` | SQLite cache used for resumable runs |
 | `crawler.py` | concurrent crawl with progress callbacks |
 | `report.py` | CSV, JSON, HTML and console output |
+| `compare.py` | diff against a previous JSON report (`--compare`) |
 
 ## Pull requests
 
