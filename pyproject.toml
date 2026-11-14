@@ -7,7 +7,7 @@ name = "sitemap-seo-checker"
 version = "0.2.0"
 description = "Crawl an XML sitemap and audit every URL for status, canonical, robots, titles, hreflang and orphan pages."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Saizul Amin" }]
 keywords = ["seo", "sitemap", "audit", "canonical", "hreflang", "cli"]
@@ -40,7 +40,7 @@ testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]

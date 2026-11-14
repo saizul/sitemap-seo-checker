@@ -19,6 +19,7 @@ from .postprocess import finalize
 from .report import render_summary, to_html, to_json, write_csv
 from .robots import load_robots
 from .sitemap import SitemapError, collect_urls, compile_patterns
+from .sitemap_lint import sort_findings
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -59,13 +60,19 @@ def build_parser() -> argparse.ArgumentParser:
     )  # fmt: skip
     p.add_argument("--no-robots", action="store_true", help="do not read robots.txt")
     p.add_argument(
+        "--no-sitemap-checks", action="store_true",
+        help="skip the sitemap protocol checks (limits, <loc>, <lastmod>, host and scope)",
+    )  # fmt: skip
+    p.add_argument(
         "--robots-agent",
         default="Googlebot",
         help="agent used for robots rules (default Googlebot)",
     )
     p.add_argument("--no-progress", action="store_true", help="hide the progress bar")
     p.add_argument(
-        "--fail-on-errors", action="store_true", help="exit 1 if any error-level issue exists"
+        "--fail-on-errors",
+        action="store_true",
+        help="exit 1 if any error-level page issue or sitemap finding exists",
     )
     p.add_argument(
         "--compare", metavar="JSON",
@@ -179,6 +186,8 @@ def main(argv: Optional[List[str]] = None) -> int:
             cache.close()
 
     analysis = finalize(results, robots, robots_url, args.robots_agent)
+    if not args.no_sitemap_checks:
+        analysis.sitemap_findings = sort_findings(collection.findings)
     if collection.truncated:
         err.print(
             f"[yellow]note:[/yellow] limited to {args.max_urls} URLs; orphan results may be partial"
@@ -207,7 +216,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             render_comparison(comparison, console)
         if output:
             print(f"CSV written to {output}")
-    if args.fail_on_errors and any(issue_level(i) == ERROR for p in results for i in p.issues):
+    if args.fail_on_errors and (
+        any(issue_level(i) == ERROR for p in results for i in p.issues)
+        or any(f.level == ERROR for f in analysis.sitemap_findings)
+    ):
         return 1
     if args.fail_on_new_errors and comparison is not None and comparison.new_error_count:
         return 1

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, fields
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+
+if TYPE_CHECKING:  # pragma: no cover
+    from .sitemap_lint import SitemapFinding
 
 ERROR = "error"
 WARNING = "warning"
@@ -111,7 +114,10 @@ class Analysis:
     orphans: List[str] = field(default_factory=list)
     linked_not_in_sitemap: List[str] = field(default_factory=list)
     hreflang_pages: int = 0
+    sitemap_findings: List[SitemapFinding] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         """Plain dict for JSON output."""
-        return asdict(self)
+        data = asdict(self)
+        data["sitemap_findings"] = [f.to_dict() for f in self.sitemap_findings]
+        return data

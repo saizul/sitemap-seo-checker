@@ -6,7 +6,10 @@ import re
 import xml.etree.ElementTree as ET
 import zlib
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Callable, Iterable, List, Optional, Pattern, Sequence, Set, Tuple
+
+from .sitemap_lint import SitemapEntry, SitemapFinding, lint_document, merge_findings
 
 MAX_DEPTH = 5
 MAX_UNCOMPRESSED = 200 * 1024 * 1024
@@ -25,6 +28,7 @@ class SitemapCollection:
     errors: List[str] = field(default_factory=list)
     truncated: bool = False
     filtered: int = 0  # URLs dropped by --include / --exclude
+    findings: List[SitemapFinding] = field(default_factory=list)  # protocol checks per file
 
 
 def _local(tag: str) -> str:
@@ -45,10 +49,11 @@ def decompress(content: bytes) -> bytes:
     return data
 
 
-def parse_sitemap(content: bytes) -> Tuple[str, List[str]]:
-    """Parse one sitemap document.
+def parse_entries(content: bytes) -> Tuple[str, List[SitemapEntry], int]:
+    """Parse one sitemap document into its entries.
 
-    Returns ``("urlset", page_urls)`` or ``("index", child_sitemap_urls)``.
+    Returns ``(kind, entries, uncompressed_size)`` where ``kind`` is ``"urlset"`` or
+    ``"index"`` and each entry carries ``loc`` and the raw ``lastmod`` text.
     """
     data = decompress(content)
     if b"<!ENTITY" in data:
@@ -60,15 +65,30 @@ def parse_sitemap(content: bytes) -> Tuple[str, List[str]]:
     kind = _local(root.tag)
     if kind not in ("urlset", "sitemapindex"):
         raise SitemapError(f"not a sitemap (root element <{kind}>)")
-    locs: List[str] = []
+    entries: List[SitemapEntry] = []
     for entry in root:
         if _local(entry.tag) not in ("url", "sitemap"):
             continue
+        loc = lastmod = ""
         for child in entry:
-            if _local(child.tag) == "loc" and child.text and child.text.strip():
-                locs.append(child.text.strip())
-                break
-    return ("index" if kind == "sitemapindex" else "urlset"), locs
+            name = _local(child.tag)
+            text = (child.text or "").strip()
+            if name == "loc" and text and not loc:
+                loc = text
+            elif name == "lastmod" and text and not lastmod:
+                lastmod = text
+        if loc:
+            entries.append(SitemapEntry(loc, lastmod))
+    return ("index" if kind == "sitemapindex" else "urlset"), entries, len(data)
+
+
+def parse_sitemap(content: bytes) -> Tuple[str, List[str]]:
+    """Parse one sitemap document.
+
+    Returns ``("urlset", page_urls)`` or ``("index", child_sitemap_urls)``.
+    """
+    kind, entries, _ = parse_entries(content)
+    return kind, [e.loc for e in entries]
 
 
 def compile_patterns(patterns: Iterable[str]) -> List[Pattern[str]]:
@@ -100,30 +120,37 @@ def collect_urls(
     max_urls: Optional[int] = None,
     include: Sequence[Pattern[str]] = (),
     exclude: Sequence[Pattern[str]] = (),
+    now: Optional[datetime] = None,
 ) -> SitemapCollection:
     """Walk a sitemap (or index) and return de-duplicated page URLs in order.
 
     ``include`` / ``exclude`` filter page URLs before ``max_urls`` is applied.
     A failing child sitemap is recorded in ``errors``; a failing root raises
-    :class:`SitemapError`.
+    :class:`SitemapError`. Every file that was read is also checked against the sitemap
+    protocol; the results are in ``findings`` (``now`` is used for future ``lastmod`` checks).
     """
     out = SitemapCollection()
     seen_urls: Set[str] = set()
     seen_maps: Set[str] = set()
+    duplicates: List[SitemapFinding] = []
 
-    def walk(url: str, depth: int) -> bool:
+    def walk(url: str, depth: int, parent_is_index: bool = False) -> bool:
         """Return False once ``max_urls`` has been reached."""
         if url in seen_maps:
             return True
         seen_maps.add(url)
         try:
-            kind, locs = parse_sitemap(fetch_bytes(url))
+            kind, entries, size = parse_entries(fetch_bytes(url))
         except Exception as exc:
             if depth == 0:
                 raise SitemapError(str(exc)) from exc
             out.errors.append(f"{url}: {exc}")
             return True
         out.sitemaps.append(url)
+        out.findings.extend(lint_document(url, kind, entries, size, now))
+        locs = [e.loc for e in entries]
+        if kind == "index" and parent_is_index:
+            out.findings.append(SitemapFinding(url, "nested-index"))
         if kind == "index":
             if depth >= MAX_DEPTH:
                 out.errors.append(f"{url}: sitemap index nested deeper than {MAX_DEPTH}")
@@ -132,11 +159,12 @@ def collect_urls(
                 if max_urls is not None and len(out.urls) >= max_urls:
                     out.truncated = True
                     return False
-                if not walk(child, depth + 1):
+                if not walk(child, depth + 1, True):
                     return False
             return True
         for loc in locs:
             if loc in seen_urls:
+                duplicates.append(SitemapFinding(url, "duplicate-loc", 1, [loc]))
                 continue
             if not url_allowed(loc, include, exclude):
                 seen_urls.add(loc)
@@ -150,4 +178,5 @@ def collect_urls(
         return True
 
     walk(sitemap_url, 0)
+    out.findings.extend(merge_findings(duplicates))
     return out
