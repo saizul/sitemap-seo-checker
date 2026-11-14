@@ -119,6 +119,8 @@ def render_summary(
         head.add_row("Orphan pages", str(len(analysis.orphans)))
         head.add_row("Linked, not in sitemap", str(len(analysis.linked_not_in_sitemap)))
     console.print(head)
+    if analysis is not None and analysis.sitemap_findings:
+        render_sitemap_findings(analysis, console)
 
     if summary["issue_counts"]:
         table = Table(title="Issues")
@@ -146,6 +148,39 @@ def render_summary(
         console.print(detail)
     else:
         console.print("[green]No issues found.[/green]")
+
+
+def render_sitemap_findings(analysis: Analysis, console: Console) -> None:
+    """Print the sitemap protocol findings table."""
+    colors = {ERROR: "red", WARNING: "yellow", NOTICE: "cyan"}
+    table = Table(title="Sitemap file checks")
+    for col in ("Level", "Check", "Sitemap", "Count", "Example / detail"):
+        table.add_column(col, overflow="fold")
+    for item in analysis.sitemap_findings:
+        color = colors.get(item.level, "white")
+        example = item.detail or (item.examples[0] if item.examples else "")
+        table.add_row(
+            f"[{color}]{item.level}[/{color}]", item.code, item.sitemap, str(item.count), example
+        )
+    console.print(table)
+
+
+def sitemap_findings_html(analysis: Analysis) -> str:
+    """HTML section for sitemap protocol findings (empty string when there are none)."""
+    if not analysis.sitemap_findings:
+        return ""
+    rows = "".join(
+        f"<tr><td>{escape(f.code)}</td><td>{escape(f.level)}</td><td>{escape(f.sitemap)}</td>"
+        f"<td>{f.count}</td><td>{escape(f.description)}"
+        + (f"<br><small>{escape(f.detail)}</small>" if f.detail else "")
+        + "".join(f"<br><small>{escape(e)}</small>" for e in f.examples)
+        + "</td></tr>"
+        for f in analysis.sitemap_findings
+    )
+    return (
+        f"<h2>Sitemap file checks ({len(analysis.sitemap_findings)})</h2><table><tr><th>Check</th>"
+        f"<th>Level</th><th>Sitemap</th><th>Count</th><th>Details</th></tr>{rows}</table>"
+    )
 
 
 def to_html(
@@ -183,7 +218,7 @@ def to_html(
             "".join(f"<li>{escape(u)}</li>" for u in analysis.linked_not_in_sitemap[:200])
             or "<li>none</li>"
         )
-        extras = (
+        extras = sitemap_findings_html(analysis) + (
             f"<h2>Orphan sitemap pages ({len(analysis.orphans)})</h2><ul>{orphans}</ul>"
             f"<h2>Linked but not in the sitemap ({len(analysis.linked_not_in_sitemap)})</h2><ul>{extra_links}</ul>"
         )

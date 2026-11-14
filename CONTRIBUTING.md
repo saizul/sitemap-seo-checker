@@ -19,6 +19,7 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
 ruff check .
+ruff format --check .
 pytest
 ```
 
@@ -33,10 +34,11 @@ pytest
 | `hreflang.py`, `links.py`, `postprocess.py` | cross-page checks |
 | `cache.py` | SQLite cache used for resumable runs |
 | `crawler.py` | concurrent crawl with progress callbacks |
+| `sitemap_lint.py` | sitemap protocol checks (limits, `<loc>`, `<lastmod>`, host and scope) |
 | `report.py` | CSV, JSON, HTML and console output |
 | `compare.py` | diff against a previous JSON report (`--compare`) |
 
 ## Pull requests
 
-Keep changes focused and make sure `ruff check .` and `pytest` pass on
-Python 3.9 to 3.12.
+Keep changes focused and make sure `ruff check .`, `ruff format --check .` and `pytest` pass on
+Python 3.10 to 3.13.

@@ -10,6 +10,10 @@ robots.txt blocks and orphan pages.
 ## Features
 
 - Sitemaps, sitemap indexes (nested) and `.xml.gz` files; duplicates removed.
+- Sitemap file checks against the sitemaps.org protocol: 50,000 entry and 50 MB
+  limits, invalid or relative `<loc>`, malformed or future `<lastmod>`, URLs on
+  another host or outside the sitemap's directory, duplicates and nested indexes
+  (see [Sitemap file checks](#sitemap-file-checks)).
 - Concurrent fetching with `ThreadPoolExecutor` (default 5 workers), optional
   per-request `--delay`, `--max-urls`, timeouts and retry with backoff.
 - Per URL: first status, final status, redirect count, final URL, canonical
@@ -34,7 +38,7 @@ pip install .            # from a clone of this repository
 pip install -e ".[dev]"
 ```
 
-Requires Python 3.9+.
+Requires Python 3.10+.
 
 ## Usage
 
@@ -63,11 +67,12 @@ sitemap-check https://example.com/sitemap.xml --compare last-week.json     # wha
 | `--html PATH` | also write an HTML report |
 | `--cache DB`, `--resume` | SQLite cache and resume |
 | `--soft-404-min-words N` | also flag 200 pages with fewer than N visible words as `soft-404` (default 0 = off) |
+| `--no-sitemap-checks` | skip the sitemap file checks (limits, `<loc>`, `<lastmod>`, host and scope) |
 | `--no-robots`, `--robots-agent` | skip robots.txt, or choose the agent (default `Googlebot`) |
 | `--no-progress` | hide the progress bar |
 | `--compare JSON` | compare with a previous `--json` report: new / fixed issues, status changes, added / removed URLs |
 | `--fail-on-new-errors` | with `--compare`: exit 1 if an error-level issue appeared since the previous report |
-| `--fail-on-errors` | exit 1 if any error-level issue exists |
+| `--fail-on-errors` | exit 1 if any error-level page issue or sitemap file finding exists |
 
 Numeric options are validated up front: `--workers` and `--max-urls` must be at least 1, `--timeout` must be greater than 0, and `--delay` / `--retries` must not be negative.
 
@@ -197,6 +202,36 @@ Removed URLs: https://example.com/old-page
 | `missing-description` | notice | no meta description |
 | `description-too-long` | notice | description over 160 characters |
 
+## Sitemap file checks
+
+Every sitemap file that is read (the root, and each child of an index) is also
+checked against the [sitemaps.org protocol](https://www.sitemaps.org/protocol.html).
+Findings are grouped per file and code, with a count and up to five example URLs.
+They appear in a "Sitemap file checks" table in the console and HTML reports, and
+under `analysis.sitemap_findings` in the JSON output:
+
+```json
+{"sitemap": "https://example.com/post-sitemap.xml", "code": "invalid-lastmod",
+ "level": "warning", "count": 2, "examples": ["https://example.com/a (31/03/2026)"], "detail": ""}
+```
+
+| Code | Level | Meaning |
+| --- | --- | --- |
+| `too-many-entries` | error | more than 50,000 `<url>` or `<sitemap>` entries in one file |
+| `too-large` | error | larger than 50 MB (52,428,800 bytes) after decompression |
+| `invalid-loc` | error | `<loc>` is not an absolute `http(s)` URL (relative, other scheme, spaces) |
+| `loc-too-long` | warning | `<loc>` is 2,048 characters or longer |
+| `invalid-lastmod` | warning | `<lastmod>` is not a W3C datetime (`2026-03-31`, `2026-03-31T10:15:30+06:00`; a time needs a zone) |
+| `future-lastmod` | warning | `<lastmod>` more than one day in the future |
+| `off-host` | warning | URL on a different host than the sitemap (`www.` counts as a different host); only valid with cross-site verification |
+| `nested-index` | warning | a sitemap index lists another sitemap index |
+| `duplicate-loc` | notice | URL already listed earlier in the sitemap tree (it is audited once) |
+| `out-of-scope` | notice | URL outside the directory of the sitemap file, e.g. `/shop/` in `/blog/sitemap.xml` |
+| `empty-sitemap` | notice | a `<urlset>` file without URLs |
+
+Error-level findings make `--fail-on-errors` exit 1. Use `--no-sitemap-checks` to
+turn the checks off.
+
 ## Notes and limits
 
 - Response time is measured until headers arrive, including redirects.
@@ -217,6 +252,7 @@ Removed URLs: https://example.com/old-page
 ```bash
 pip install -e ".[dev]"
 ruff check .
+ruff format --check .
 pytest
 ```
 
